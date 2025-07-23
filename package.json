@@ -9,7 +9,7 @@
     "install-deps": "npm install ws"
   },
   "dependencies": {
-    "ws": "^8.14.2"
+    "ws": "^8.18.3"
   },
   "keywords": [
     "udp",

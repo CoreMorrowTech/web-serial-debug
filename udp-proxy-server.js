@@ -10,8 +10,7 @@ const http = require('http');
 
 // 配置
 const CONFIG = {
-    websocketPort: process.env.PORT || 8080,
-    httpPort: process.env.PORT || 3000,
+    port: process.env.PORT || 8080,
     maxConnections: 100,
     timeout: 30000, // 30秒超时
     allowedOrigins: [
@@ -73,7 +72,7 @@ const server = http.createServer((req, res) => {
                 <h1>UDP WebSocket代理服务器</h1>
                 <div class="status">
                     <h3>✅ 服务器运行中</h3>
-                    <p><strong>WebSocket端口:</strong> ${CONFIG.websocketPort}</p>
+                    <p><strong>服务端口:</strong> ${CONFIG.port}</p>
                     <p><strong>当前连接数:</strong> <span id="connections">${wss.clients.size}</span></p>
                     <p><strong>运行时间:</strong> ${Math.floor(process.uptime())}秒</p>
                 </div>
@@ -88,7 +87,7 @@ const server = http.createServer((req, res) => {
                 
                 <div class="info">
                     <h3>WebSocket连接</h3>
-                    <p>连接地址: <code>${req.headers.host ? (req.headers['x-forwarded-proto'] || 'ws') + '://' + req.headers.host : 'ws://localhost:' + CONFIG.websocketPort}</code></p>
+                    <p>连接地址: <code>${req.headers.host ? (req.headers['x-forwarded-proto'] || 'ws') + '://' + req.headers.host : 'ws://localhost:' + CONFIG.port}</code></p>
                 </div>
                 
                 <script>
@@ -123,13 +122,11 @@ function isOriginAllowed(origin) {
 
 // 创建WebSocket服务器
 const wss = new WebSocket.Server({ 
-    server: server,
-    port: CONFIG.websocketPort 
+    server: server
 });
 
 console.log(`UDP代理服务器启动:`);
-console.log(`- WebSocket端口: ${CONFIG.websocketPort}`);
-console.log(`- HTTP端口: ${CONFIG.httpPort}`);
+console.log(`- 服务端口: ${CONFIG.port}`);
 
 // 连接管理
 const connections = new Map();
@@ -329,8 +326,10 @@ function sendError(ws, error) {
 }
 
 // 启动HTTP服务器
-server.listen(CONFIG.httpPort, () => {
-    console.log(`HTTP服务器运行在端口 ${CONFIG.httpPort}`);
+server.listen(CONFIG.port, () => {
+    console.log(`HTTP服务器运行在端口 ${CONFIG.port}`);
+    console.log(`WebSocket服务器运行在端口 ${CONFIG.port}`);
+    console.log(`访问地址: http://localhost:${CONFIG.port}`);
 });
 
 // 优雅关闭
