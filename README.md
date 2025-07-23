@@ -117,7 +117,7 @@ npx serve .
 ### 代理服务器配置
 ```javascript
 // 自定义代理服务器地址
-localStorage.setItem('udpProxyServer', 'wss://your-server.com');
+localStorage.setItem('udpProxyServer', 'wss://web-production-b1ff1.up.railway.app');
 ```
 
 ### 环境变量
