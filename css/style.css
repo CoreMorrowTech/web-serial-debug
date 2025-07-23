@@ -26,9 +26,14 @@ body {
 	background-color: #000;
 	color: #fff;
 }
-#serial-options,
+#connection-options,
 #serial-tools {
 	position: relative;
+}
+
+#serial-config,
+#udp-config {
+	min-height: 400px;
 }
 .toggle-button {
 	align-items: center;

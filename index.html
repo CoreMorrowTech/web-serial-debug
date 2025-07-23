@@ -49,9 +49,20 @@
     </header>
 
     <div id="main" class="d-flex">
-        <!--左侧串口配置-->
-        <div id="serial-options" class="col-auto m-0 bg-light sidebar">
-            <div class="collapse show p-2 float-start">
+        <!--左侧连接配置-->
+        <div id="connection-options" class="col-auto m-0 bg-light sidebar">
+            <!-- 连接类型选择 -->
+            <div class="p-2">
+                <div class="btn-group w-100 mb-3" role="group">
+                    <input type="radio" class="btn-check" name="connection-type" id="type-serial" value="serial" checked>
+                    <label class="btn btn-outline-primary" for="type-serial">串口</label>
+                    <input type="radio" class="btn-check" name="connection-type" id="type-udp" value="udp">
+                    <label class="btn btn-outline-primary" for="type-udp">UDP</label>
+                </div>
+            </div>
+            
+            <!-- 串口配置 -->
+            <div id="serial-config" class="collapse show p-2 float-start">
                 <div class="input-group mb-3">
                     <span class="input-group-text">波特率</span>
                     <input type="number" id="serial-baud" class="form-control" placeholder="选择波特率" value="115200"
@@ -136,6 +147,38 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- UDP配置 -->
+            <div id="udp-config" class="collapse p-2 float-start" style="display: none;">
+                <div class="input-group mb-3">
+                    <span class="input-group-text">远程IP</span>
+                    <input type="text" id="udp-remote-ip" class="form-control" placeholder="目标IP地址" value="127.0.0.1">
+                </div>
+                
+                <div class="input-group mb-3">
+                    <span class="input-group-text">远程端口</span>
+                    <input type="number" id="udp-remote-port" class="form-control" placeholder="目标端口" value="8080" min="1" max="65535">
+                </div>
+                
+                <div class="input-group mb-3">
+                    <span class="input-group-text">本地IP</span>
+                    <input type="text" id="udp-local-ip" class="form-control" placeholder="本地IP地址" value="0.0.0.0">
+                </div>
+                
+                <div class="input-group mb-3">
+                    <span class="input-group-text">本地端口</span>
+                    <input type="number" id="udp-local-port" class="form-control" placeholder="本地端口" value="8081" min="1" max="65535">
+                </div>
+
+                <div class="d-flex">
+                    <button class="btn btn-primary flex-grow-1" id="udp-connect-or-disconnect">连接UDP</button>
+                </div>
+
+                <div id="udp-status" class="mt-2">
+                    <div class="alert alert-secondary" role="alert">UDP未连接</div>
+                </div>
+            </div>
+            
             <button class="toggle-button float-end" title="隐藏/打开边栏">
                 <i class="bi bi-chevron-compact-left"></i>
             </button>
@@ -146,7 +189,7 @@
         <div id="log-main" class="flex-fill px-md-2">
             <div
                 class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-1 pb-1 mb-1 flex-shrink-0">
-                <h1 class="h3">串口日志</h1>
+                <h1 class="h3" id="log-title">串口日志</h1>
 
                 <div class="btn-toolbar">
                     <div class="input-group input-group-sm me-2">
@@ -205,7 +248,7 @@
                         </div>
                     </div>
                     <button id="serial-send" class="btn btn-primary h-10 px-5"><i class="bi bi-send"></i>
-                        发送</button>
+                        <span id="send-button-text">发送</span></button>
                 </div>
             </div>
         </div>
@@ -357,6 +400,7 @@ setInterval(function(){
         </div>
     </div>
     <script src="js/ansi_up.min.js"></script>
+    <script src="js/udp.js"></script>
     <script src="js/common.js"></script>
 
 </body>

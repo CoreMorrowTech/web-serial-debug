@@ -556,17 +556,35 @@
 		}
 		document.getElementById('serial-status').innerHTML = tip
 	}
-	//串口数据收发
+	//数据收发 (支持串口和UDP)
 	async function send() {
 		let content = document.getElementById('serial-send-content').value
 		if (!content) {
 			addLogErr('发送内容为空')
 			return
 		}
-		if (toolOptions.hexSend) {
-			await sendHex(content)
+		
+		// 检查当前连接类型
+		const connectionType = window.udpModule ? window.udpModule.getCurrentConnectionType() : 'serial';
+		
+		if (connectionType === 'udp') {
+			// UDP发送
+			if (!window.udpModule.isUDPConnected()) {
+				addLogErr('请先连接UDP')
+				return
+			}
+			if (toolOptions.hexSend) {
+				await sendHexUDP(content)
+			} else {
+				await sendTextUDP(content)
+			}
 		} else {
-			await sendText(content)
+			// 串口发送
+			if (toolOptions.hexSend) {
+				await sendHex(content)
+			} else {
+				await sendText(content)
+			}
 		}
 	}
 
@@ -588,6 +606,30 @@
 	async function sendText(text) {
 		const encoder = new TextEncoder()
 		writeData(encoder.encode(text))
+	}
+
+	//发送HEX到UDP
+	async function sendHexUDP(hex) {
+		const value = hex.replace(/\s+/g, '')
+		if (/^[0-9A-Fa-f]+$/.test(value) && value.length % 2 === 0) {
+			let data = []
+			for (let i = 0; i < value.length; i = i + 2) {
+				data.push(parseInt(value.substring(i, i + 2), 16))
+			}
+			await window.udpModule.sendUDPData(Uint8Array.from(data))
+		} else {
+			addLogErr('HEX格式错误:' + hex)
+		}
+	}
+
+	//发送文本到UDP
+	async function sendTextUDP(text) {
+		const encoder = new TextEncoder()
+		let data = encoder.encode(text)
+		if (toolOptions.addCRLF) {
+			data = new Uint8Array([...data, 0x0d, 0x0a])
+		}
+		await window.udpModule.sendUDPData(data)
 	}
 
 	//写串口数据
@@ -795,4 +837,8 @@
 			modalNewName.hide()
 		}
 	}
+
+	// 暴露函数给其他模块使用
+	window.addLog = addLog
+	window.addLogErr = addLogErr
 })()
