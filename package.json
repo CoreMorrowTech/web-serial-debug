@@ -4,9 +4,7 @@
   "description": "UDP WebSocket代理服务器，用于解决浏览器UDP连接限制",
   "main": "udp-proxy-server.js",
   "scripts": {
-    "start": "node udp-proxy-server.js",
-    "dev": "node udp-proxy-server.js",
-    "install-deps": "npm install ws"
+    "start": "node udp-proxy-server.js"
   },
   "dependencies": {
     "ws": "^8.18.3"
