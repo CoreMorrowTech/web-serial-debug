@@ -27,6 +27,8 @@ const server = http.createServer((req, res) => {
     const origin = req.headers.origin;
     if (isOriginAllowed(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -122,7 +124,8 @@ function isOriginAllowed(origin) {
 
 // 创建WebSocket服务器
 const wss = new WebSocket.Server({ 
-    server: server
+    server: server,
+    perMessageDeflate: false
 });
 
 console.log(`正在启动UDP代理服务器...`);
