@@ -23,16 +23,10 @@ const CONFIG = {
 
 // 创建HTTP服务器（可选，用于状态页面）
 const server = http.createServer((req, res) => {
-    // 设置CORS头
-    const origin = req.headers.origin;
-    if (isOriginAllowed(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-    }
+    // 设置CORS头 - 简化处理避免undefined值
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
     
     // 处理预检请求
     if (req.method === 'OPTIONS') {
@@ -109,17 +103,9 @@ const server = http.createServer((req, res) => {
     }
 });
 
-// 检查来源是否被允许
+// 检查来源是否被允许（暂时简化为允许所有来源）
 function isOriginAllowed(origin) {
-    if (!origin) return true; // 允许无来源的请求（如直接访问）
-    
-    return CONFIG.allowedOrigins.some(allowed => {
-        if (allowed.includes('*')) {
-            const pattern = allowed.replace(/\*/g, '.*');
-            return new RegExp(pattern).test(origin);
-        }
-        return allowed === origin;
-    });
+    return true; // 简化处理，允许所有来源
 }
 
 // 创建WebSocket服务器
