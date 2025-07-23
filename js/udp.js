@@ -330,7 +330,7 @@
         // GitHub Pages部署
         if (hostname.includes('github.io')) {
             // 这里需要替换为您的实际代理服务器地址
-            return 'wss://web-production-b1ff1.up.railway.app↗';
+            return 'wss://web-production-b1ff1.up.railway.app';
         }
         
         // 本地开发环境
