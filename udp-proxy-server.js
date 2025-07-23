@@ -125,8 +125,12 @@ const wss = new WebSocket.Server({
     server: server
 });
 
-console.log(`UDP代理服务器启动:`);
-console.log(`- 服务端口: ${CONFIG.port}`);
+console.log(`正在启动UDP代理服务器...`);
+console.log(`配置端口: ${CONFIG.port}`);
+console.log(`环境: ${process.env.NODE_ENV || 'development'}`);
+if (process.env.RAILWAY_ENVIRONMENT) {
+    console.log(`Railway部署环境检测到`);
+}
 
 // 连接管理
 const connections = new Map();
@@ -326,10 +330,27 @@ function sendError(ws, error) {
 }
 
 // 启动HTTP服务器
-server.listen(CONFIG.port, () => {
-    console.log(`HTTP服务器运行在端口 ${CONFIG.port}`);
-    console.log(`WebSocket服务器运行在端口 ${CONFIG.port}`);
-    console.log(`访问地址: http://localhost:${CONFIG.port}`);
+const PORT = CONFIG.port;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`UDP代理服务器启动成功!`);
+    console.log(`HTTP服务器运行在端口 ${PORT}`);
+    console.log(`WebSocket服务器运行在端口 ${PORT}`);
+    console.log(`健康检查端点: /health`);
+    console.log(`状态API端点: /status`);
+    if (process.env.RAILWAY_ENVIRONMENT) {
+        console.log(`Railway环境部署成功`);
+    } else {
+        console.log(`本地访问地址: http://localhost:${PORT}`);
+    }
+});
+
+// 监听服务器错误
+server.on('error', (error) => {
+    console.error('服务器启动错误:', error);
+    if (error.code === 'EADDRINUSE') {
+        console.error(`端口 ${PORT} 已被占用`);
+    }
+    process.exit(1);
 });
 
 // 优雅关闭
