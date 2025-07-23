@@ -328,13 +328,13 @@
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         
         // GitHub Pages部署
-        if (hostname.includes('github.io')) {
+        if (hostname && hostname.includes('github.io')) {
             // 这里需要替换为您的实际代理服务器地址
-            return 'wss://web-production-b1ff1.up.railway.app';
+            return 'wss://your-udp-proxy.railway.app';
         }
         
-        // 本地开发环境
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        // 本地开发环境（包括直接打开HTML文件的情况）
+        if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1' || location.protocol === 'file:') {
             return 'ws://localhost:8080';
         }
         
