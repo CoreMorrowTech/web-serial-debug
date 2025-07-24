@@ -50,6 +50,59 @@ const server = http.createServer((req, res) => {
             status: 'healthy',
             timestamp: new Date().toISOString()
         }));
+    } else if (req.url === '/clients') {
+        // 获取所有连接的客户端信息
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        const clientList = Array.from(connections.values()).map(client => ({
+            id: client.id,
+            remoteAddress: client.remoteAddress,
+            clientLocalIP: client.clientLocalIP,
+            clientLocalPort: client.clientLocalPort,
+            connectedAt: client.connectedAt,
+            hasUDP: !!client.udpSocket
+        }));
+        res.end(JSON.stringify({
+            clients: clientList,
+            totalClients: clientList.length
+        }));
+    } else if (req.url.startsWith('/send-to-client/') && req.method === 'POST') {
+        // 向指定客户端发送UDP数据
+        const clientId = req.url.split('/')[2];
+        let body = '';
+        
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+        
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                const client = Array.from(connections.values()).find(c => c.id.toString() === clientId);
+                
+                if (!client) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Client not found' }));
+                    return;
+                }
+                
+                // 发送UDP数据到客户端内网
+                handleUDPSendToClient(client, {
+                    data: data.data || Array.from(Buffer.from(data.message || 'Hello from server', 'utf8'))
+                });
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                    success: true, 
+                    message: `Data sent to client ${clientId}`,
+                    targetIP: client.clientLocalIP,
+                    targetPort: client.clientLocalPort
+                }));
+                
+            } catch (error) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON data' }));
+            }
+        });
     } else {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(`
@@ -78,7 +131,21 @@ const server = http.createServer((req, res) => {
                     <ul>
                         <li><a href="/status">状态API</a> - JSON格式状态信息</li>
                         <li><a href="/health">健康检查</a> - 服务健康状态</li>
+                        <li><a href="/clients">客户端列表</a> - 查看所有连接的客户端</li>
+                        <li><strong>POST /send-to-client/{clientId}</strong> - 向指定客户端内网发送UDP数据</li>
                     </ul>
+                </div>
+                
+                <div class="info">
+                    <h3>向客户端发送数据示例</h3>
+                    <pre style="background: #f8f9fa; padding: 10px; border-radius: 3px;">
+POST /send-to-client/1234567890
+Content-Type: application/json
+
+{
+  "message": "Hello from server",
+  "data": [72, 101, 108, 108, 111]
+}</pre>
                 </div>
                 
                 <div class="info">
@@ -210,6 +277,10 @@ function handleMessage(clientInfo, data) {
             handleUDPDisconnect(clientInfo);
             break;
             
+        case 'udp_send_to_client':
+            handleUDPSendToClient(clientInfo, data);
+            break;
+            
         case 'ping':
             sendMessage(ws, { type: 'pong', timestamp: Date.now() });
             break;
@@ -318,6 +389,7 @@ async function handleUDPConnect(clientInfo, data) {
         
         // 监听UDP消息
         udpSocket.on('message', (msg, rinfo) => {
+            console.log(`UDP收到数据: ${msg.length} 字节，来自 ${rinfo.address}:${rinfo.port} (客户端: ${clientInfo.id})`);
             sendMessage(ws, {
                 type: 'udp_data',
                 data: Array.from(msg),
@@ -326,6 +398,10 @@ async function handleUDPConnect(clientInfo, data) {
                 timestamp: Date.now()
             });
         });
+        
+        // 保存客户端的真实内网地址信息，用于反向发送
+        clientInfo.clientLocalIP = localIP;
+        clientInfo.clientLocalPort = localPort;
         
         // 处理绑定错误
         udpSocket.on('error', (error) => {
@@ -508,6 +584,73 @@ function handleUDPDisconnect(clientInfo) {
             timestamp: Date.now()
         });
         console.log(`UDP连接关闭 (客户端: ${clientInfo.id})`);
+    }
+}
+
+// 处理向客户端内网IP发送UDP数据的请求
+function handleUDPSendToClient(clientInfo, data) {
+    const { ws, udpSocket } = clientInfo;
+    
+    if (!udpSocket) {
+        sendError(ws, 'UDP not connected');
+        return;
+    }
+    
+    // 使用客户端的内网IP作为目标地址
+    const targetIP = clientInfo.clientLocalIP || '127.0.0.1';
+    const targetPort = clientInfo.clientLocalPort || 8081;
+    const { data: messageData } = data;
+    
+    console.log(`服务器主动向客户端内网发送UDP数据:`);
+    console.log(`  目标地址: ${targetIP}:${targetPort}`);
+    console.log(`  数据长度: ${messageData ? messageData.length : 0} 字节`);
+    console.log(`  客户端ID: ${clientInfo.id}`);
+    
+    // 验证参数
+    if (!messageData || messageData.length === 0) {
+        const errorMsg = 'No data to send to client';
+        console.error(errorMsg);
+        sendError(ws, errorMsg);
+        return;
+    }
+    
+    try {
+        const buffer = Buffer.from(messageData);
+        console.log(`  发送缓冲区创建成功，大小: ${buffer.length} 字节`);
+        
+        // 向客户端内网IP发送UDP数据
+        udpSocket.send(buffer, targetPort, targetIP, (error) => {
+            if (error) {
+                console.error(`向客户端内网发送UDP失败 (客户端 ${clientInfo.id}):`, error);
+                console.error(`  错误代码: ${error.code}`);
+                console.error(`  错误消息: ${error.message}`);
+                console.error(`  目标: ${targetIP}:${targetPort}`);
+                
+                // 根据错误类型提供更具体的错误信息
+                let errorMessage = `UDP send to client failed: ${error.message}`;
+                if (error.code === 'ENETUNREACH') {
+                    errorMessage += ' (Network unreachable - 客户端内网不可达，可能需要NAT穿透)';
+                } else if (error.code === 'EHOSTUNREACH') {
+                    errorMessage += ' (Host unreachable - 客户端主机不可达)';
+                } else if (error.code === 'ECONNREFUSED') {
+                    errorMessage += ' (Connection refused - 客户端端口未监听)';
+                }
+                
+                sendError(ws, errorMessage);
+            } else {
+                console.log(`向客户端内网发送UDP成功 (客户端 ${clientInfo.id}): ${buffer.length} 字节到 ${targetIP}:${targetPort}`);
+                sendMessage(ws, {
+                    type: 'udp_sent_to_client',
+                    bytesSent: buffer.length,
+                    targetAddress: targetIP,
+                    targetPort: targetPort,
+                    timestamp: Date.now()
+                });
+            }
+        });
+    } catch (error) {
+        console.error(`向客户端内网发送UDP异常 (客户端 ${clientInfo.id}):`, error);
+        sendError(ws, `UDP send to client error: ${error.message}`);
     }
 }
 
