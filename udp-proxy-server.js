@@ -208,6 +208,8 @@ function handleUDPConnect(clientInfo, data) {
     const { ws } = clientInfo;
     const { localIP = '0.0.0.0', localPort = 0 } = data;
     
+    console.log(`客户端 ${clientInfo.id} 请求UDP连接: ${localIP}:${localPort}`);
+    
     try {
         // 创建UDP socket
         const udpSocket = dgram.createSocket('udp4');
@@ -224,12 +226,45 @@ function handleUDPConnect(clientInfo, data) {
             });
         });
         
-        // 在云环境中，忽略客户端的localIP，总是绑定到0.0.0.0
-        // 这样可以避免EADDRNOTAVAIL错误
-        const bindIP = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production' ? '0.0.0.0' : localIP;
-        const bindPort = localPort;
+        // 处理绑定错误
+        udpSocket.on('error', (error) => {
+            console.error(`UDP错误 (客户端 ${clientInfo.id}):`, error);
+            sendError(ws, `UDP error: ${error.message}`);
+            
+            // 清理失败的socket
+            if (clientInfo.udpSocket === udpSocket) {
+                clientInfo.udpSocket = null;
+            }
+        });
         
-        console.log(`尝试绑定UDP到: ${bindIP}:${bindPort} (客户端请求: ${localIP}:${localPort})`);
+        // 云环境策略：总是绑定到0.0.0.0并让系统分配端口
+        // 本地环境：尝试使用客户端指定的配置
+        const isCloudEnvironment = process.env.RAILWAY_ENVIRONMENT || 
+                                  process.env.NODE_ENV === 'production' ||
+                                  process.env.VERCEL || 
+                                  process.env.HEROKU_APP_NAME;
+        
+        let bindIP, bindPort;
+        
+        if (isCloudEnvironment) {
+            // 云环境：强制使用0.0.0.0和系统分配端口
+            bindIP = '0.0.0.0';
+            bindPort = 0; // 让系统分配可用端口
+            console.log(`云环境检测到，使用安全绑定策略: ${bindIP}:${bindPort}`);
+        } else {
+            // 本地环境：尝试使用客户端配置，但验证IP地址
+            if (localIP === '127.0.0.1' || localIP === 'localhost' || localIP === '0.0.0.0') {
+                bindIP = localIP;
+                bindPort = localPort;
+            } else {
+                // 客户端IP不是本地地址，使用0.0.0.0
+                bindIP = '0.0.0.0';
+                bindPort = localPort;
+                console.log(`客户端IP ${localIP} 不是本地地址，改用 ${bindIP}`);
+            }
+        }
+        
+        console.log(`尝试绑定UDP到: ${bindIP}:${bindPort}`);
         
         // 绑定端口
         udpSocket.bind(bindPort, bindIP, () => {
@@ -240,49 +275,11 @@ function handleUDPConnect(clientInfo, data) {
                 localPort: address.port,
                 timestamp: Date.now()
             });
-            console.log(`UDP连接建立: ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
-        });
-        
-        // 处理绑定错误
-        udpSocket.on('error', (error) => {
-            console.error('UDP绑定错误:', error);
-            if (error.code === 'EADDRNOTAVAIL') {
-                sendError(ws, `UDP bind failed: Address not available. Server will bind to 0.0.0.0 instead.`);
-                // 尝试重新绑定到0.0.0.0
-                try {
-                    const fallbackSocket = dgram.createSocket('udp4');
-                    clientInfo.udpSocket = fallbackSocket;
-                    
-                    fallbackSocket.on('message', (msg, rinfo) => {
-                        sendMessage(ws, {
-                            type: 'udp_data',
-                            data: Array.from(msg),
-                            remoteAddress: rinfo.address,
-                            remotePort: rinfo.port,
-                            timestamp: Date.now()
-                        });
-                    });
-                    
-                    fallbackSocket.bind(0, '0.0.0.0', () => {
-                        const address = fallbackSocket.address();
-                        sendMessage(ws, {
-                            type: 'udp_connected',
-                            localAddress: address.address,
-                            localPort: address.port,
-                            timestamp: Date.now()
-                        });
-                        console.log(`UDP连接建立(回退): ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
-                    });
-                } catch (fallbackError) {
-                    sendError(ws, `UDP fallback bind failed: ${fallbackError.message}`);
-                }
-            } else {
-                sendError(ws, `UDP error: ${error.message}`);
-            }
+            console.log(`UDP连接建立成功: ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
         });
         
     } catch (error) {
-        console.error('UDP连接失败:', error);
+        console.error(`UDP连接失败 (客户端 ${clientInfo.id}):`, error);
         sendError(ws, `UDP connect failed: ${error.message}`);
     }
 }
@@ -383,6 +380,14 @@ function handleUDPDisconnect(clientInfo) {
 // 清理资源
 function cleanup(clientInfo) {
     if (clientInfo.udpSocket) {
+        try {
+            const address = clientInfo.udpSocket.address();
+            console.log(`清理UDP连接: ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
+        } catch (error) {
+            // Socket可能已经关闭，忽略错误
+        }
+        
+        clientInfo.udpSocket.removeAllListeners();
         clientInfo.udpSocket.close();
         clientInfo.udpSocket = null;
     }
