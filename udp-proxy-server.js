@@ -346,7 +346,7 @@ async function handleUDPConnect(clientInfo, data) {
         console.log(`尝试绑定UDP到: ${bindIP}:${bindPort}`);
         
         // 绑定端口
-        udpSocket.bind(bindPort, bindIP, () => {
+        udpSocket.bind(bindPort, bindIP, async () => {
             const address = udpSocket.address();
             
             // 记录端口分配情况
@@ -359,9 +359,14 @@ async function handleUDPConnect(clientInfo, data) {
             
             // 如果绑定到0.0.0.0，尝试获取服务器的实际公网IP地址
             if (address.address === '0.0.0.0') {
-                // 尝试获取公网IP地址
-                clientVisibleIP = await getPublicIP(clientInfo);
-                console.log(`IP地址解析: 绑定地址 ${address.address} -> 客户端可见地址 ${clientVisibleIP}`);
+                try {
+                    // 尝试获取公网IP地址
+                    clientVisibleIP = await getPublicIP(clientInfo);
+                    console.log(`IP地址解析: 绑定地址 ${address.address} -> 客户端可见地址 ${clientVisibleIP}`);
+                } catch (error) {
+                    console.error('获取公网IP失败，使用回退地址:', error.message);
+                    clientVisibleIP = clientInfo.serverHost || '127.0.0.1';
+                }
             }
             
             sendMessage(ws, {
