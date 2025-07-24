@@ -269,13 +269,28 @@ function handleUDPConnect(clientInfo, data) {
         // 绑定端口
         udpSocket.bind(bindPort, bindIP, () => {
             const address = udpSocket.address();
+            
+            // 记录端口分配情况
+            if (address.port !== localPort) {
+                console.log(`端口自动分配: 请求端口 ${localPort} -> 分配端口 ${address.port} (客户端: ${clientInfo.id})`);
+            }
+            
             sendMessage(ws, {
                 type: 'udp_connected',
                 localAddress: address.address,
                 localPort: address.port,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                // 添加原始请求信息，便于客户端对比
+                requestedIP: localIP,
+                requestedPort: localPort
             });
+            
             console.log(`UDP连接建立成功: ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
+            
+            // 在云环境中提供额外信息
+            if (isCloudEnvironment) {
+                console.log(`云环境端口管理: 客户端 ${clientInfo.id} 现在可以使用端口 ${address.port} 进行UDP通信`);
+            }
         });
         
     } catch (error) {

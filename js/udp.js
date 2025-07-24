@@ -185,7 +185,43 @@
             case 'udp_connected':
                 udpConnected = true;
                 updateUDPStatus(true);
-                addLogErr('UDP连接成功: ' + data.localAddress + ':' + data.localPort);
+                
+                // 获取服务器分配的地址和端口
+                const serverAssignedIP = data.localAddress;
+                const serverAssignedPort = data.localPort;
+                const requestedIP = data.requestedIP || udpOptions.localIP;
+                const requestedPort = data.requestedPort || udpOptions.localPort;
+                
+                // 检查并处理端口变化
+                if (serverAssignedPort !== requestedPort) {
+                    if (requestedPort === 0) {
+                        addLogErr(`✅ 系统自动分配端口: ${serverAssignedPort}`);
+                    } else {
+                        addLogErr(`⚠️  端口已更改: ${requestedPort} → ${serverAssignedPort} (云环境自动分配)`);
+                    }
+                    
+                    // 更新本地配置
+                    udpOptions.localPort = serverAssignedPort;
+                    document.getElementById('udp-local-port').value = serverAssignedPort;
+                    saveUdpOptions();
+                }
+                
+                // 检查并处理IP变化
+                if (serverAssignedIP !== requestedIP) {
+                    addLogErr(`⚠️  IP地址已更改: ${requestedIP} → ${serverAssignedIP} (云环境安全策略)`);
+                    
+                    // 更新本地配置
+                    udpOptions.localIP = serverAssignedIP;
+                    document.getElementById('udp-local-ip').value = serverAssignedIP;
+                    saveUdpOptions();
+                }
+                
+                addLogErr(`✅ UDP连接成功: ${serverAssignedIP}:${serverAssignedPort}`);
+                
+                // 提供用户友好的说明
+                if (serverAssignedPort !== requestedPort || serverAssignedIP !== requestedIP) {
+                    addLogErr('📝 配置已自动更新，下次连接将使用新的地址和端口');
+                }
                 break;
                 
             case 'udp_data':
