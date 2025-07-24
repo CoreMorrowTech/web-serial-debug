@@ -224,14 +224,15 @@ function handleUDPConnect(clientInfo, data) {
             });
         });
         
-        // 监听错误
-        udpSocket.on('error', (error) => {
-            console.error('UDP错误:', error);
-            sendError(ws, `UDP error: ${error.message}`);
-        });
+        // 在云环境中，忽略客户端的localIP，总是绑定到0.0.0.0
+        // 这样可以避免EADDRNOTAVAIL错误
+        const bindIP = process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production' ? '0.0.0.0' : localIP;
+        const bindPort = localPort;
+        
+        console.log(`尝试绑定UDP到: ${bindIP}:${bindPort} (客户端请求: ${localIP}:${localPort})`);
         
         // 绑定端口
-        udpSocket.bind(localPort, localIP, () => {
+        udpSocket.bind(bindPort, bindIP, () => {
             const address = udpSocket.address();
             sendMessage(ws, {
                 type: 'udp_connected',
@@ -240,6 +241,44 @@ function handleUDPConnect(clientInfo, data) {
                 timestamp: Date.now()
             });
             console.log(`UDP连接建立: ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
+        });
+        
+        // 处理绑定错误
+        udpSocket.on('error', (error) => {
+            console.error('UDP绑定错误:', error);
+            if (error.code === 'EADDRNOTAVAIL') {
+                sendError(ws, `UDP bind failed: Address not available. Server will bind to 0.0.0.0 instead.`);
+                // 尝试重新绑定到0.0.0.0
+                try {
+                    const fallbackSocket = dgram.createSocket('udp4');
+                    clientInfo.udpSocket = fallbackSocket;
+                    
+                    fallbackSocket.on('message', (msg, rinfo) => {
+                        sendMessage(ws, {
+                            type: 'udp_data',
+                            data: Array.from(msg),
+                            remoteAddress: rinfo.address,
+                            remotePort: rinfo.port,
+                            timestamp: Date.now()
+                        });
+                    });
+                    
+                    fallbackSocket.bind(0, '0.0.0.0', () => {
+                        const address = fallbackSocket.address();
+                        sendMessage(ws, {
+                            type: 'udp_connected',
+                            localAddress: address.address,
+                            localPort: address.port,
+                            timestamp: Date.now()
+                        });
+                        console.log(`UDP连接建立(回退): ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
+                    });
+                } catch (fallbackError) {
+                    sendError(ws, `UDP fallback bind failed: ${fallbackError.message}`);
+                }
+            } else {
+                sendError(ws, `UDP error: ${error.message}`);
+            }
         });
         
     } catch (error) {
