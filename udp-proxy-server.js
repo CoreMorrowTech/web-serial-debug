@@ -117,8 +117,20 @@ const wss = new WebSocket.Server({
 console.log(`正在启动UDP代理服务器...`);
 console.log(`配置端口: ${CONFIG.port}`);
 console.log(`环境: ${process.env.NODE_ENV || 'development'}`);
+
+// Railway环境信息显示
 if (process.env.RAILWAY_ENVIRONMENT) {
-    console.log(`Railway部署环境检测到`);
+    console.log(`=== Railway部署环境检测到 ===`);
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+        console.log(`Railway公网域名: ${process.env.RAILWAY_PUBLIC_DOMAIN}`);
+    }
+    if (process.env.RAILWAY_STATIC_URL) {
+        console.log(`Railway静态URL: ${process.env.RAILWAY_STATIC_URL}`);
+    }
+    if (process.env.PORT) {
+        console.log(`Railway分配端口: ${process.env.PORT}`);
+    }
+    console.log(`================================`);
 }
 
 // 连接管理
@@ -210,24 +222,13 @@ function handleMessage(clientInfo, data) {
 // 获取服务器公网IP地址
 async function getPublicIP(clientInfo) {
     try {
-        // 方法1: 从环境变量获取
-        if (process.env.RAILWAY_PUBLIC_DOMAIN) {
-            return process.env.RAILWAY_PUBLIC_DOMAIN;
-        }
-        
-        // 方法2: 从WebSocket请求头获取
-        if (clientInfo.serverHost && 
-            clientInfo.serverHost !== 'localhost' && 
-            clientInfo.serverHost !== '127.0.0.1') {
-            return clientInfo.serverHost;
-        }
-        
-        // 方法3: 通过外部服务获取公网IP
+        // 方法1: 优先通过外部服务获取真实公网IP地址
         const https = require('https');
         const publicIPServices = [
             'https://api.ipify.org',
             'https://icanhazip.com',
-            'https://ipinfo.io/ip'
+            'https://ipinfo.io/ip',
+            'https://checkip.amazonaws.com'
         ];
         
         for (const service of publicIPServices) {
@@ -257,6 +258,27 @@ async function getPublicIP(clientInfo) {
                 console.log(`获取公网IP失败 (${service}): ${error.message}`);
                 continue;
             }
+        }
+        
+        // 方法2: Railway环境变量回退 (如果IP获取失败)
+        if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+            console.log(`回退到Railway公网域名: ${process.env.RAILWAY_PUBLIC_DOMAIN}`);
+            return process.env.RAILWAY_PUBLIC_DOMAIN;
+        }
+        
+        // Railway的其他可能环境变量
+        if (process.env.RAILWAY_STATIC_URL) {
+            const railwayUrl = process.env.RAILWAY_STATIC_URL.replace(/^https?:\/\//, '');
+            console.log(`回退到Railway静态URL: ${railwayUrl}`);
+            return railwayUrl;
+        }
+        
+        // 方法3: 从WebSocket请求头获取
+        if (clientInfo.serverHost && 
+            clientInfo.serverHost !== 'localhost' && 
+            clientInfo.serverHost !== '127.0.0.1') {
+            console.log(`回退到请求头地址: ${clientInfo.serverHost}`);
+            return clientInfo.serverHost;
         }
         
         // 方法4: 回退到本机网络接口IP
@@ -529,10 +551,30 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`WebSocket服务器运行在端口 ${PORT}`);
     console.log(`健康检查端点: /health`);
     console.log(`状态API端点: /status`);
+    
     if (process.env.RAILWAY_ENVIRONMENT) {
-        console.log(`Railway环境部署成功`);
+        console.log(`=== Railway环境部署成功 ===`);
+        
+        // 构建公网访问地址
+        let publicUrl = '';
+        if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+            publicUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+        } else if (process.env.RAILWAY_STATIC_URL) {
+            publicUrl = process.env.RAILWAY_STATIC_URL;
+        }
+        
+        if (publicUrl) {
+            console.log(`公网HTTP访问: ${publicUrl}`);
+            console.log(`公网WebSocket: ${publicUrl.replace('https://', 'wss://')}`);
+            console.log(`健康检查: ${publicUrl}/health`);
+            console.log(`状态API: ${publicUrl}/status`);
+        }
+        
+        console.log(`客户端应使用WebSocket地址连接UDP代理服务`);
+        console.log(`===============================`);
     } else {
         console.log(`本地访问地址: http://localhost:${PORT}`);
+        console.log(`本地WebSocket: ws://localhost:${PORT}`);
     }
 });
 
