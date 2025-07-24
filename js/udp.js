@@ -208,7 +208,11 @@
                 
                 // 检查并处理IP变化
                 if (serverAssignedIP !== requestedIP) {
-                    addLogErr(`⚠️  IP地址已更改: ${requestedIP} → ${serverAssignedIP} (云环境安全策略)`);
+                    if (data.serverBindAddress === '0.0.0.0') {
+                        addLogErr(`✅ 服务器IP地址解析: ${requestedIP} → ${serverAssignedIP} (云环境公网地址)`);
+                    } else {
+                        addLogErr(`⚠️  IP地址已更改: ${requestedIP} → ${serverAssignedIP} (云环境安全策略)`);
+                    }
                     
                     // 更新本地配置
                     udpOptions.localIP = serverAssignedIP;

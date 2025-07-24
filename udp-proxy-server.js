@@ -131,7 +131,8 @@ wss.on('connection', function connection(ws, req) {
         ws: ws,
         udpSocket: null,
         remoteAddress: req.socket.remoteAddress,
-        connectedAt: new Date()
+        connectedAt: new Date(),
+        serverHost: req.headers.host ? req.headers.host.split(':')[0] : null
     };
     
     connections.set(clientId, clientInfo);
@@ -183,7 +184,10 @@ function handleMessage(clientInfo, data) {
     
     switch (data.type) {
         case 'udp_connect':
-            handleUDPConnect(clientInfo, data);
+            handleUDPConnect(clientInfo, data).catch(error => {
+                console.error('UDP连接处理错误:', error);
+                sendError(clientInfo.ws, `UDP connect failed: ${error.message}`);
+            });
             break;
             
         case 'udp_send':
@@ -203,8 +207,83 @@ function handleMessage(clientInfo, data) {
     }
 }
 
+// 获取服务器公网IP地址
+async function getPublicIP(clientInfo) {
+    try {
+        // 方法1: 从环境变量获取
+        if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+            return process.env.RAILWAY_PUBLIC_DOMAIN;
+        }
+        
+        // 方法2: 从WebSocket请求头获取
+        if (clientInfo.serverHost && 
+            clientInfo.serverHost !== 'localhost' && 
+            clientInfo.serverHost !== '127.0.0.1') {
+            return clientInfo.serverHost;
+        }
+        
+        // 方法3: 通过外部服务获取公网IP
+        const https = require('https');
+        const publicIPServices = [
+            'https://api.ipify.org',
+            'https://icanhazip.com',
+            'https://ipinfo.io/ip'
+        ];
+        
+        for (const service of publicIPServices) {
+            try {
+                const ip = await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => reject(new Error('Timeout')), 3000);
+                    
+                    https.get(service, (res) => {
+                        clearTimeout(timeout);
+                        let data = '';
+                        res.on('data', chunk => data += chunk);
+                        res.on('end', () => {
+                            const ip = data.trim();
+                            // 验证IP格式
+                            if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+                                resolve(ip);
+                            } else {
+                                reject(new Error('Invalid IP format'));
+                            }
+                        });
+                    }).on('error', reject);
+                });
+                
+                console.log(`通过 ${service} 获取到公网IP: ${ip}`);
+                return ip;
+            } catch (error) {
+                console.log(`获取公网IP失败 (${service}): ${error.message}`);
+                continue;
+            }
+        }
+        
+        // 方法4: 回退到本机网络接口IP
+        const os = require('os');
+        const networkInterfaces = os.networkInterfaces();
+        for (const interfaceName in networkInterfaces) {
+            const interfaces = networkInterfaces[interfaceName];
+            for (const iface of interfaces) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    console.log(`使用本机网络接口IP: ${iface.address}`);
+                    return iface.address;
+                }
+            }
+        }
+        
+        // 最后回退
+        console.log('无法获取公网IP，使用回退地址');
+        return clientInfo.serverHost || '127.0.0.1';
+        
+    } catch (error) {
+        console.error('获取公网IP时发生错误:', error);
+        return clientInfo.serverHost || '127.0.0.1';
+    }
+}
+
 // 处理UDP连接请求
-function handleUDPConnect(clientInfo, data) {
+async function handleUDPConnect(clientInfo, data) {
     const { ws } = clientInfo;
     const { localIP = '0.0.0.0', localPort = 0 } = data;
     
@@ -275,21 +354,34 @@ function handleUDPConnect(clientInfo, data) {
                 console.log(`端口自动分配: 请求端口 ${localPort} -> 分配端口 ${address.port} (客户端: ${clientInfo.id})`);
             }
             
+            // 确定要返回给客户端的IP地址
+            let clientVisibleIP = address.address;
+            
+            // 如果绑定到0.0.0.0，尝试获取服务器的实际公网IP地址
+            if (address.address === '0.0.0.0') {
+                // 尝试获取公网IP地址
+                clientVisibleIP = await getPublicIP(clientInfo);
+                console.log(`IP地址解析: 绑定地址 ${address.address} -> 客户端可见地址 ${clientVisibleIP}`);
+            }
+            
             sendMessage(ws, {
                 type: 'udp_connected',
-                localAddress: address.address,
+                localAddress: clientVisibleIP,
                 localPort: address.port,
                 timestamp: Date.now(),
                 // 添加原始请求信息，便于客户端对比
                 requestedIP: localIP,
-                requestedPort: localPort
+                requestedPort: localPort,
+                // 添加服务器实际绑定信息
+                serverBindAddress: address.address,
+                serverBindPort: address.port
             });
             
-            console.log(`UDP连接建立成功: ${address.address}:${address.port} (客户端: ${clientInfo.id})`);
+            console.log(`UDP连接建立成功: ${clientVisibleIP}:${address.port} (服务器绑定: ${address.address}:${address.port}, 客户端: ${clientInfo.id})`);
             
             // 在云环境中提供额外信息
             if (isCloudEnvironment) {
-                console.log(`云环境端口管理: 客户端 ${clientInfo.id} 现在可以使用端口 ${address.port} 进行UDP通信`);
+                console.log(`云环境端口管理: 客户端 ${clientInfo.id} 现在可以使用 ${clientVisibleIP}:${address.port} 进行UDP通信`);
             }
         });
         
