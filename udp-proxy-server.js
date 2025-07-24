@@ -298,12 +298,58 @@ function handleUDPSend(clientInfo, data) {
     
     const { data: messageData, remoteAddress, remotePort } = data;
     
+    // 增加详细日志
+    console.log(`客户端 ${clientInfo.id} 尝试发送UDP数据:`);
+    console.log(`  目标地址: ${remoteAddress}:${remotePort}`);
+    console.log(`  数据长度: ${messageData ? messageData.length : 0} 字节`);
+    console.log(`  本地绑定: ${udpSocket.address ? udpSocket.address().address + ':' + udpSocket.address().port : '未知'}`);
+    
+    // 验证参数
+    if (!remoteAddress || !remotePort) {
+        const errorMsg = `Invalid remote address: ${remoteAddress}:${remotePort}`;
+        console.error(errorMsg);
+        sendError(ws, errorMsg);
+        return;
+    }
+    
+    if (!messageData || messageData.length === 0) {
+        const errorMsg = 'No data to send';
+        console.error(errorMsg);
+        sendError(ws, errorMsg);
+        return;
+    }
+    
     try {
         const buffer = Buffer.from(messageData);
+        console.log(`  发送缓冲区创建成功，大小: ${buffer.length} 字节`);
+        
+        // 在云环境中添加额外的网络检查
+        if (process.env.RAILWAY_ENVIRONMENT) {
+            console.log(`  Railway环境检测到，执行UDP发送...`);
+        }
+        
         udpSocket.send(buffer, remotePort, remoteAddress, (error) => {
             if (error) {
-                sendError(ws, `UDP send failed: ${error.message}`);
+                console.error(`UDP发送失败 (客户端 ${clientInfo.id}):`, error);
+                console.error(`  错误代码: ${error.code}`);
+                console.error(`  错误消息: ${error.message}`);
+                console.error(`  目标: ${remoteAddress}:${remotePort}`);
+                
+                // 根据错误类型提供更具体的错误信息
+                let errorMessage = `UDP send failed: ${error.message}`;
+                if (error.code === 'ENETUNREACH') {
+                    errorMessage += ' (Network unreachable - 可能是云环境网络限制)';
+                } else if (error.code === 'EHOSTUNREACH') {
+                    errorMessage += ' (Host unreachable - 目标主机不可达)';
+                } else if (error.code === 'ECONNREFUSED') {
+                    errorMessage += ' (Connection refused - 目标端口未监听)';
+                } else if (error.code === 'EPERM') {
+                    errorMessage += ' (Permission denied - 可能是防火墙阻止)';
+                }
+                
+                sendError(ws, errorMessage);
             } else {
+                console.log(`UDP发送成功 (客户端 ${clientInfo.id}): ${buffer.length} 字节到 ${remoteAddress}:${remotePort}`);
                 sendMessage(ws, {
                     type: 'udp_sent',
                     bytesSent: buffer.length,
@@ -314,6 +360,7 @@ function handleUDPSend(clientInfo, data) {
             }
         });
     } catch (error) {
+        console.error(`UDP发送异常 (客户端 ${clientInfo.id}):`, error);
         sendError(ws, `UDP send error: ${error.message}`);
     }
 }
